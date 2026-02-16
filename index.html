@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Battle of Emoji - Home</title>
+    <link rel="stylesheet" href="style.css" />
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+    <!-- Config -->
+    <script src="config.js"></script>
+    <script src="firebase-config.js"></script>
+</head>
+
+<body>
+    <nav>
+        <div class="nav-container">
+            <a href="index.html" class="logo">Battle of Emoji ⚔️</a>
+            <ul>
+                <li><a href="index.html" class="active">Home</a></li>
+                <li><a href="select.html">Play</a></li>
+                <li><a href="about.html">About</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <div class="wrap">
+        <div class="hero">
+            <h1>Welcome to the Arena</h1>
+            <p>Choose your fighter, pick your moves, and battle for glory!</p>
+            <div style="display:flex; gap:16px; justify-content:center;">
+                <a href="select.html" class="cta-button">Play Local</a>
+                <a href="lobby.html" class="cta-button"
+                    style="background: linear-gradient(90deg, #8b5cf6, #ec4899);">Play Online</a>
+            </div>
+        </div>
+
+        <!-- Optional: Briefly show characters or features here if needed, but keeping it clean for now -->
+    </div>
+
+    <footer>
+        &copy; 2024 Battle of Emoji. All rights reserved.
+    </footer>
+</body>
+
+</html>

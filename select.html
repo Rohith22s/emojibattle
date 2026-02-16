@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Battle of Emoji - Selection</title>
+    <link rel="stylesheet" href="style.css" />
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+    <!-- Config -->
+    <script src="config.js"></script>
+    <script src="firebase-config.js"></script>
+</head>
+
+<body>
+    <nav>
+        <div class="nav-container">
+            <a href="index.html" class="logo">Battle of Emoji ⚔️</a>
+            <ul>
+                <li><a href="index.html">Home</a></li>
+                <li><a href="select.html" class="active">Play</a></li>
+                <li><a href="about.html">About</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <div class="wrap">
+        <header>
+            <h1>Select Fighters</h1>
+            <div class="muted">Select characters → choose 6 moves → Start battle</div>
+        </header>
+
+        <div class="panel">
+            <h2 style="margin-top:0">1) Choose Player & Opponent</h2>
+            <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+                <div style="flex:1;min-width:300px">
+                    <strong>Player</strong>
+                    <div id="playerPicker" class="chars"></div>
+                </div>
+                <div style="flex:1;min-width:300px">
+                    <strong>Opponent (AI)</strong>
+                    <div id="opponentPicker" class="chars"></div>
+                </div>
+            </div>
+
+            <h2 style="margin-top:6px">2) Pick up to 6 moves (for Player)</h2>
+            <div id="movesList" class="moves"></div>
+            <div style="margin-top:8px" class="muted">Selected: <span id="selectedCount">0</span>/6</div>
+
+            <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+                <button id="randomChars">Randomize Characters</button>
+                <button id="randomMoves">Randomize Moves</button>
+                <button id="startBtn" class="primary">Start Battle</button>
+            </div>
+
+            <hr style="margin:12px 0;border:none;border-top:1px solid rgba(255,255,255,0.04)">
+            <div>
+                <label>Weather: </label>
+                <select id="weatherSelect">
+                    <option value="random">Random on Start</option>
+                    <option value="sunny">Sunny</option>
+                    <option value="rain">Rain</option>
+                    <option value="storm">Storm</option>
+                    <option value="fog">Fog</option>
+                </select>
+                <small class="muted" style="display:block;margin-top:6px">Weather affects damage & accuracy (e.g., Storm
+                    boosts lightning moves)</small>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+
+</html>

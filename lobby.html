@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Battle of Emoji - Lobby</title>
+    <link rel="stylesheet" href="style.css" />
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+    <!-- Config -->
+    <script src="config.js"></script>
+    <script src="firebase-config.js"></script>
+</head>
+
+<body>
+    <nav>
+        <div class="nav-container">
+            <a href="index.html" class="logo">Battle of Emoji ⚔️</a>
+            <ul>
+                <li><a href="index.html">Home</a></li>
+                <li><a href="lobby.html" class="active">Online</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <div class="wrap">
+        <div class="panel hero">
+            <h1>Multiplayer Lobby</h1>
+            <p>Battle against friends in real-time!</p>
+
+            <div id="lobbyControls"
+                style="max-width:400px; margin:0 auto; display:flex; flex-direction:column; gap:16px;">
+                <button id="createRoomBtn" class="cta-button">Create New Room</button>
+
+                <div style="display:flex; align-items:center; gap:8px; margin-top:10px;">
+                    <div style="height:1px; background:rgba(255,255,255,0.1); flex:1"></div>
+                    <span class="muted">OR</span>
+                    <div style="height:1px; background:rgba(255,255,255,0.1); flex:1"></div>
+                </div>
+
+                <div style="display:flex; gap:8px;">
+                    <input type="text" id="roomCodeInput" placeholder="Enter Room Code"
+                        style="flex:1; padding:12px; border-radius:8px; border:1px solid rgba(255,255,255,0.1); background:rgba(0,0,0,0.2); color:white; text-transform:uppercase;">
+                    <button id="joinRoomBtn" class="cta-button" style="padding:12px 24px;">Join</button>
+                </div>
+            </div>
+
+            <div id="roomStatus" style="margin-top:20px;"></div>
+        </div>
+    </div>
+
+    <footer>
+        &copy; 2026 Battle of Emoji
+    </footer>
+
+    <script src="script.js"></script>
+</body>
+
+</html>

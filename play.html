@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Battle of Emoji - Battle</title>
+    <link rel="stylesheet" href="style.css" />
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+    <!-- Config -->
+    <script src="config.js"></script>
+    <script src="firebase-config.js"></script>
+</head>
+
+<body>
+    <nav>
+        <div class="nav-container">
+            <a href="index.html" class="logo">Battle of Emoji ⚔️</a>
+            <ul>
+                <li><a href="index.html">Home</a></li>
+                <li><a href="select.html" class="active">Play</a></li>
+                <li><a href="about.html">About</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <div class="wrap">
+        <div class="grid" style="grid-template-columns: 1fr;"> <!-- Single column layout for battle focus -->
+            <div class="panel">
+                <div class="stage">
+                    <div class="battle-row">
+                        <div class="fighter" id="playerBox">
+                            <h3 id="playerName">Player</h3>
+                            <div class="stat"><strong>HP</strong>
+                                <div class="bar" style="margin-left:6px"><i id="playerHP" style="width:100%"></i></div>
+                                <div id="playerHPText" style="width:60px;text-align:right">100%</div>
+                            </div>
+                            <div class="stat" style="margin-top:6px"><strong>Stamina</strong>
+                                <div class="bar stamina" style="margin-left:6px"><i id="playerStam"
+                                        style="width:100%"></i></div>
+                                <div id="playerStamText" style="width:60px;text-align:right">100%</div>
+                            </div>
+                            <div style="margin-top:8px" id="playerCooldowns" class="muted">Cooldowns: -</div>
+                            <div id="playerBuffs" class="buffs-container"
+                                style="margin-top:4px; min-height:24px; display:flex; gap:4px; flex-wrap:wrap;"></div>
+                        </div>
+
+                        <div class="fighter" id="opponentBox">
+                            <h3 id="opponentName">Opponent</h3>
+                            <div class="stat"><strong>HP</strong>
+                                <div class="bar" style="margin-left:6px"><i id="opponentHP" style="width:100%"></i>
+                                </div>
+                                <div id="opponentHPText" style="width:60px;text-align:right">100%</div>
+                            </div>
+                            <div class="stat" style="margin-top:6px"><strong>Stamina</strong>
+                                <div class="bar stamina" style="margin-left:6px"><i id="opponentStam"
+                                        style="width:100%"></i></div>
+                                <div id="opponentStamText" style="width:60px;text-align:right">100%</div>
+                            </div>
+                            <div style="margin-top:8px" id="opponentCooldowns" class="muted">Cooldowns: -</div>
+                            <div id="opponentBuffs" class="buffs-container"
+                                style="margin-top:4px; min-height:24px; display:flex; gap:4px; flex-wrap:wrap;"></div>
+                        </div>
+                    </div>
+
+                    <div>
+                        <h3 style="margin:8px 0 6px 0">Battle Controls</h3>
+                        <div class="controls">
+                            <div id="playerMovesArea" style="display:flex;gap:8px;flex-wrap:wrap"></div>
+                            <div style="flex:1;text-align:right">
+                                <button id="endTurnBtn">End Turn</button>
+                                <button id="resetBtn">Forfeit / Reset</button>
+                            </div>
+                        </div>
+                        <div style="margin-top:8px" class="muted">Round: <span id="roundCounter">1</span></div>
+                    </div>
+
+                    <div>
+                        <div id="battleArena" class="arena">
+                            <div class="arena-content">
+                                <div id="arenaPlayer" class="arena-char"></div>
+                                <div id="arenaOpponent" class="arena-char"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div>
+                        <h3 style="margin:8px 0 6px 0">Battle Log</h3>
+                        <div id="log" class="log"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Game Over Modal -->
+    <div id="gameOverModal" class="modal-overlay" style="display:none">
+        <div class="modal-content">
+            <h1 id="gameOverTitle">Game Over</h1>
+            <p id="gameOverMessage"></p>
+            <div class="modal-actions">
+                <button id="btnPlayAgain" class="cta-button">Play Again</button>
+                <button id="btnChangeChar" class="cta-button secondary">Change Character</button>
+                <button id="btnEndGame" class="cta-button danger">End Game</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+
+</html>

@@ -1,0 +1,564 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Battle of Emoji -- Demo</title>
+  <style>
+    :root{--bg:#0f172a;--card:#0b1220;--accent:#6ee7b7;--muted:#9aa4b2}
+    *{box-sizing:border-box;font-family:Inter, system-ui, Arial, sans-serif}
+    body{margin:0;background:linear-gradient(180deg,#071025 0%, #071426 60%);color:#e6eef6}
+    .wrap{max-width:1100px;margin:24px auto;padding:18px}
+    header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+    h1{font-size:20px;margin:0}
+    .grid{display:grid;grid-template-columns:320px 1fr;gap:16px}
+    .panel{background:rgba(255,255,255,0.03);padding:12px;border-radius:10px}
+
+    /* selection panels */
+    .chars{display:flex;flex-direction:column;gap:8px}
+    .char-card{display:flex;align-items:center;gap:10px;padding:8px;border-radius:8px;background:linear-gradient(180deg,rgba(255,255,255,0.02),transparent);cursor:pointer}
+    .char-card.selected{outline:2px solid rgba(110,231,183,0.12);box-shadow:0 6px 20px rgba(0,0,0,0.5)}
+    .char-emoji{font-size:30px}
+    .muted{color:var(--muted);font-size:13px}
+
+    /* moves */
+    .moves{display:flex;flex-wrap:wrap;gap:8px}
+    .move{padding:8px 10px;border-radius:8px;background:rgba(255,255,255,0.02);cursor:pointer;display:flex;gap:8px;align-items:center}
+    .move.locked{opacity:0.4;cursor:not-allowed}
+    .move .memoji{font-size:18px}
+    .move small{display:block;color:var(--muted);font-size:12px}
+
+    /* stage */
+    .stage{display:flex;flex-direction:column;gap:12px}
+    .battle-row{display:flex;justify-content:space-between;gap:12px}
+    .fighter{flex:1;background:linear-gradient(180deg,rgba(255,255,255,0.02),transparent);padding:12px;border-radius:10px;min-height:120px}
+    .fighter h3{margin:0 0 8px 0}
+    .stat{display:flex;gap:10px;align-items:center}
+    .bar{height:12px;background:rgba(255,255,255,0.06);border-radius:8px;flex:1;position:relative}
+    .bar > i{position:absolute;left:0;top:0;bottom:0;background:linear-gradient(90deg,#6ee7b7,#34d399);border-radius:8px}
+    .stamina i{background:linear-gradient(90deg,#60a5fa,#3b82f6)}
+
+    /* controls */
+    .controls{display:flex;gap:8px;align-items:center}
+    button{background:transparent;border:1px solid rgba(255,255,255,0.06);padding:8px 12px;border-radius:8px;color:inherit;cursor:pointer}
+    button.primary{background:linear-gradient(90deg,#0ea5a3,#06b6d4);border:none;color:#012;}
+
+    .log{max-height:260px;overflow:auto;padding:8px;background:rgba(0,0,0,0.25);border-radius:8px}
+    .chip{display:inline-block;background:rgba(255,255,255,0.04);padding:6px 8px;border-radius:999px;margin:2px 4px;font-size:13px}
+
+    footer{margin-top:12px;color:var(--muted);font-size:13px}
+
+    @media (max-width:900px){.grid{grid-template-columns:1fr} }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>Battle of Emoji -- Demo</h1>
+      <div class="muted">Select characters → choose 6 moves → Start battle</div>
+    </header>
+
+    <div class="grid">
+      <div class="panel">
+        <h2 style="margin-top:0">1) Choose Player & Opponent</h2>
+        <div style="display:flex;gap:8px;margin-bottom:12px">
+          <div style="flex:1">
+            <strong>Player</strong>
+            <div id="playerPicker" class="chars"></div>
+          </div>
+          <div style="flex:1">
+            <strong>Opponent (AI)</strong>
+            <div id="opponentPicker" class="chars"></div>
+          </div>
+        </div>
+
+        <h2 style="margin-top:6px">2) Pick up to 6 moves (for Player)</h2>
+        <div id="movesList" class="moves"></div>
+        <div style="margin-top:8px" class="muted">Selected: <span id="selectedCount">0</span>/6</div>
+
+        <div style="margin-top:12px;display:flex;gap:8px">
+          <button id="randomChars">Randomize Characters</button>
+          <button id="randomMoves">Randomize Moves</button>
+          <button id="startBtn" class="primary">Start Battle</button>
+        </div>
+
+        <hr style="margin:12px 0;border:none;border-top:1px solid rgba(255,255,255,0.04)">
+        <div>
+          <label>Weather: </label>
+          <select id="weatherSelect">
+            <option value="random">Random on Start</option>
+            <option value="sunny">Sunny</option>
+            <option value="rain">Rain</option>
+            <option value="storm">Storm</option>
+            <option value="fog">Fog</option>
+          </select>
+          <small class="muted" style="display:block;margin-top:6px">Weather affects damage & accuracy (e.g., Storm boosts lightning moves)</small>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="stage">
+          <div class="battle-row">
+            <div class="fighter" id="playerBox">
+              <h3 id="playerName">Player -- (not selected)</h3>
+              <div class="stat"><strong>HP</strong><div class="bar" style="margin-left:6px"><i id="playerHP" style="width:100%"></i></div><div id="playerHPText" style="width:60px;text-align:right">100%</div></div>
+              <div class="stat" style="margin-top:6px"><strong>Stamina</strong><div class="bar stamina" style="margin-left:6px"><i id="playerStam" style="width:100%"></i></div><div id="playerStamText" style="width:60px;text-align:right">100%</div></div>
+              <div style="margin-top:8px" id="playerCooldowns" class="muted">Cooldowns: -</div>
+            </div>
+
+            <div class="fighter" id="opponentBox">
+              <h3 id="opponentName">Opponent -- (not selected)</h3>
+              <div class="stat"><strong>HP</strong><div class="bar" style="margin-left:6px"><i id="opponentHP" style="width:100%"></i></div><div id="opponentHPText" style="width:60px;text-align:right">100%</div></div>
+              <div class="stat" style="margin-top:6px"><strong>Stamina</strong><div class="bar stamina" style="margin-left:6px"><i id="opponentStam" style="width:100%"></i></div><div id="opponentStamText" style="width:60px;text-align:right">100%</div></div>
+              <div style="margin-top:8px" id="opponentCooldowns" class="muted">Cooldowns: -</div>
+            </div>
+          </div>
+
+          <div>
+            <h3 style="margin:8px 0 6px 0">Battle Controls</h3>
+            <div class="controls">
+              <div id="playerMovesArea" style="display:flex;gap:8px;flex-wrap:wrap"></div>
+              <div style="flex:1;text-align:right">
+                <button id="endTurnBtn">End Turn</button>
+                <button id="resetBtn">Reset</button>
+              </div>
+            </div>
+            <div style="margin-top:8px" class="muted">Round: <span id="roundCounter">0</span></div>
+          </div>
+
+          <div>
+            <h3 style="margin:8px 0 6px 0">Battle Log</h3>
+            <div id="log" class="log"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <footer>Mechanics: Critical chance 10%. Base dodge chance 25%. Moves have cooldowns and stamina cost. Special ability usable once per match. Weather modifies damage or hit chance. Enjoy!</footer>
+  </div>
+
+  <script>
+    /**
+     * Battle of Emoji -- Single-file demo
+     * - Character data uses user-provided moves where available (a subset for demo)
+     * - Flow: pick characters -> pick up to 6 moves -> Start -> each round player chooses one move -> AI chooses -> resolve
+     * - Shows cooldowns as (emoji 0/2) style and displays stamina/HP
+     */
+
+    // -------------------------------
+    // Data: characters and moves
+    // -------------------------------
+    const CHARACTERS = [
+      { id:'wizard', name:'Wizard', emoji:'🧙‍♂️', hp:100, stamMax:100, special:{name:'Time Freeze',emoji:'⏳',used:false,effect:'skip_enemy_next_turn'} , moves:[
+        {id:'timefreeze', name:'Time Freeze', emoji:'⏳', dmg:0, stam:30, cd:3, desc:'Skip enemy turn (special)'},
+        {id:'fireball', name:'Fireball', emoji:'🔥', dmg:22, stam:18, cd:2},
+        {id:'watershield', name:'Water Shield', emoji:'💧', dmg:0, stam:12, cd:3, heal:14},
+        {id:'lightning', name:'Lightning Strike', emoji:'⚡', dmg:26, stam:22, cd:3, type:'electric'},
+        {id:'wind', name:'Wind Gust', emoji:'🌬️', dmg:12, stam:10, cd:2},
+        {id:'earth', name:'Earthquake', emoji:'🌍', dmg:20, stam:20, cd:3}
+      ] },
+
+      { id:'demon', name:'Demon', emoji:'👺', hp:110, stamMax:100, special:{name:'Hellfire',emoji:'🔥🔥🔥',used:false,effect:'massive_dmg'}, moves:[
+        {id:'hellfire', name:'Hellfire', emoji:'🔥🔥', dmg:36, stam:35, cd:4},
+        {id:'summon', name:'Summon', emoji:'🦖', dmg:0, stam:25, cd:4, summon:true},
+        {id:'quick', name:'Quick Punch', emoji:'👊', dmg:14, stam:8, cd:1},
+        {id:'create', name:'Create Bone', emoji:'💀', dmg:18, stam:12, cd:2},
+        {id:'deadeye', name:'Dead Eye', emoji:'👁️', dmg:22, stam:15, cd:3},
+        {id:'thousands', name:'Thousands', emoji:'🙌', dmg:16, stam:10, cd:2}
+      ]},
+
+      { id:'ninja', name:'Ninja', emoji:'🥷', hp:90, stamMax:100, special:{name:'Shadow Master',emoji:'👤',used:false,effect:'dodge_boost'}, moves:[
+        {id:'reflex', name:'Quick Reflex', emoji:'⚡', dmg:16, stam:10, cd:1},
+        {id:'smoke', name:'Smoke Bomb', emoji:'💨', dmg:0, stam:10, cd:2, buff:'dodge'},
+        {id:'shuriken', name:'Shuriken', emoji:'🪃', dmg:18, stam:12, cd:1},
+        {id:'poison', name:'Poison Dart', emoji:'💉', dmg:10, stam:8, cd:2, dot:4},
+        {id:'bladestorm', name:'Blade Storm', emoji:'⚔️', dmg:26, stam:22, cd:3},
+        {id:'shadow', name:'Shadow Step', emoji:'👣', dmg:12, stam:6, cd:1}
+      ]},
+
+      { id:'swordsman', name:'Swordsman', emoji:'🤺', hp:100, stamMax:100, special:{name:'Blade Echo',emoji:'🌪️⚔️',used:false,effect:'extra_attack'}, moves:[
+        {id:'deflect', name:'Deflect', emoji:'🔁', dmg:0, stam:6, cd:2, buff:'reflect'},
+        {id:'bladestorm2', name:'Bladestorm', emoji:'🌪️⚔️', dmg:28, stam:22, cd:3},
+        {id:'windslash', name:'Wind Slash', emoji:'🍃🗡️', dmg:18, stam:12, cd:2},
+        {id:'sword', name:'Sword Slash', emoji:'⚔️', dmg:16, stam:10, cd:1},
+        {id:'twin', name:'Twin Blades', emoji:'🗡️🗡️', dmg:20, stam:14, cd:2},
+        {id:'shieldbash', name:'Shield Bash', emoji:'🛡️', dmg:12, stam:8, cd:1}
+      ]},
+
+      { id:'vampire', name:'Vampire', emoji:'🧛', hp:95, stamMax:100, special:{name:'Blood Thrall',emoji:'🩸',used:false,effect:'vamp_burst'}, moves:[
+        {id:'bat', name:'Bat Swarm', emoji:'🦇', dmg:14, stam:8, cd:1},
+        {id:'bite', name:'Fang Bite', emoji:'☠️', dmg:22, stam:16, cd:2},
+        {id:'gaze', name:'Hypnotic Gaze', emoji:'👁️', dmg:0, stam:16, cd:3, debuff:'stun'},
+        {id:'drain', name:'Life Drain', emoji:'🩸', dmg:18, stam:14, cd:2, healPct:0.5},
+        {id:'swarm', name:'Bat Fury', emoji:'🦇🦇', dmg:20, stam:18, cd:3},
+        {id:'rest', name:'Rest', emoji:'🛌', dmg:0, stam:-20, cd:3, heal:20}
+      ]},
+
+      { id:'dragon', name:'Dragon', emoji:'🐉', hp:120, stamMax:100, special:{name:'Dragon Roar',emoji:'🐉🔥',used:false,effect:'fear'}, moves:[
+        {id:'smallsummon', name:'Summon (small)', emoji:'🦖', dmg:0, stam:28, cd:4},
+        {id:'flame', name:'Flame Breath', emoji:'🔥', dmg:30, stam:26, cd:3},
+        {id:'claw', name:'Claw', emoji:'🦴', dmg:18, stam:12, cd:1},
+        {id:'wing', name:'Wing Gust', emoji:'🪽', dmg:10, stam:8, cd:1},
+        {id:'tail', name:'Tail Swipe', emoji:'🌀', dmg:16, stam:10, cd:1},
+        {id:'earth2', name:'Lava Strike', emoji:'🌋', dmg:24, stam:20, cd:3}
+      ]},
+
+      { id:'genie', name:'Genie', emoji:'🧞', hp:100, stamMax:100, special:{name:'Wish',emoji:'✨',used:false,effect:'big_heal'}, moves:[
+        {id:'tele', name:'Teleport', emoji:'📍', dmg:0, stam:8, cd:1, buff:'evade'},
+        {id:'surge', name:'Elemental Surge', emoji:'🔥💧🌬️🌍', dmg:26, stam:22, cd:3},
+        {id:'illusion', name:'Illusion Cloud', emoji:'🌫️', dmg:0, stam:12, cd:2, debuff:'confuse'},
+        {id:'chaos', name:'Chaos Blast', emoji:'⚡🔥', dmg:28, stam:24, cd:3},
+        {id:'heal', name:'Healing Light', emoji:'🕊️', dmg:0, stam:16, cd:3, heal:22},
+        {id:'bind', name:'Shadow Bind', emoji:'🖤', dmg:10, stam:10, cd:2}
+      ]},
+
+      { id:'knight', name:'Knight', emoji:'🤴', hp:110, stamMax:100, special:{name:'Royal Guard',emoji:'🛡️',used:false,effect:'shield_block'}, moves:[
+        {id:'superfirst', name:'Super First', emoji:'✊', dmg:10, stam:6, cd:1},
+        {id:'fly', name:'Fly', emoji:'🪽', dmg:0, stam:8, cd:2, buff:'evade'},
+        {id:'heatview', name:'Heat View', emoji:'🧿', dmg:0, stam:10, cd:2, buff:'crit_up'},
+        {id:'strength', name:'Super Strength', emoji:'💪', dmg:26, stam:22, cd:3},
+        {id:'block', name:'Block', emoji:'🛡️', dmg:0, stam:8, cd:2, buff:'shield'},
+        {id:'smash', name:'Smash', emoji:'👏', dmg:18, stam:12, cd:1}
+      ]},
+
+      { id:'supermom', name:'Super Mom', emoji:'👸', hp:105, stamMax:100, special:{name:'Motherly Order',emoji:'🔊',used:false,effect:'debuff_enemy'}, moves:[
+        {id:'care', name:'Super Care', emoji:'💖', dmg:0, stam:12, cd:2, heal:18},
+        {id:'mstrength', name:'Mom\'s Strength', emoji:'💪', dmg:18, stam:14, cd:2},
+        {id:'shieldmom', name:"Protective Shield", emoji:'🛡️', dmg:0, stam:10, cd:2, buff:'shield'},
+        {id:'hug', name:'Nurturing Hug', emoji:'🤗', dmg:0, stam:10, cd:2, heal:12},
+        {id:'wrath', name:'Motherly Wrath', emoji:'🔥', dmg:22, stam:18, cd:3},
+        {id:'vision', name:'Super Vision', emoji:'👀', dmg:0, stam:10, cd:3, buff:'crit_up'}
+      ]},
+
+      { id:'ogre', name:'Ogre', emoji:'🧌', hp:120, stamMax:100, special:{name:'Ground Smash',emoji:'🔨',used:false,effect:'stun'}, moves:[
+        {id:'club', name:'Club Swing', emoji:'🪓', dmg:18, stam:14, cd:1},
+        {id:'stomp', name:'Stomp', emoji:'🦶', dmg:22, stam:18, cd:2},
+        {id:'roar', name:'Roar', emoji:'🗣️', dmg:0, stam:10, cd:3, debuff:'fear'},
+        {id:'bash', name:'Bash', emoji:'👊', dmg:16, stam:10, cd:1},
+        {id:'slam', name:'Slam', emoji:'💥', dmg:26, stam:22, cd:3},
+        {id:'crush', name:'Crush', emoji:'🪨', dmg:20, stam:16, cd:2}
+      ]}
+    ];
+
+    // -------------------------------
+    // Game state
+    // -------------------------------
+    let state = {
+      player: null,
+      opponent: null,
+      playerMovesSelected: [],
+      opponentMovesSelected: [],
+      weather: 'sunny',
+      round: 0,
+      log: [],
+      rngSeed: Math.random()
+    };
+
+    // -------------------------------
+    // Utility helpers
+    // -------------------------------
+    function $(id){return document.getElementById(id)}
+
+    function cloneCharacter(char){
+      // deep copy + attach runtime fields
+      const base = JSON.parse(JSON.stringify(char));
+      base.hpCurrent = base.hp;
+      base.stamCurrent = base.stamMax;
+      base.cooldowns = {};
+      base.moves.forEach(m => base.cooldowns[m.id]=0);
+      base.special = base.special || {used:false};
+      base.buffs = {}; // e.g., dodge, shield
+      return base;
+    }
+
+    function randChoice(arr){ return arr[Math.floor(Math.random()*arr.length)]; }
+
+    // damage modifiers based on weather
+    function weatherModifier(move){
+      const w = state.weather;
+      if(!move) return 1;
+      if(w==='storm' && move.type==='electric') return 1.4;
+      if(w==='rain' && move.emoji && move.emoji.includes('🔥')) return 0.8; // fire dampened
+      if(w==='fog' && move.buff==='evade') return 0.8;
+      if(w==='sunny' && move.emoji && move.emoji.includes('🔥')) return 1.1;
+      return 1;
+    }
+
+    function pct(v,mx){return Math.max(0,Math.min(100, Math.round((v/mx)*100)));}
+
+    // logs
+    function log(msg){ state.log.unshift(msg); renderLog(); }
+    function renderLog(){ const l=$('log'); l.innerHTML = state.log.slice(0,200).map(s=>'<div>'+s+'</div>').join(''); }
+
+    // -------------------------------
+    // UI: populate character pickers
+    // -------------------------------
+    const playerPicker = $('playerPicker');
+    const opponentPicker = $('opponentPicker');
+    const movesList = $('movesList');
+    const selectedCount = $('selectedCount');
+
+    function renderPickers(){
+      playerPicker.innerHTML=''; opponentPicker.innerHTML='';
+      CHARACTERS.forEach(c => {
+        const card1 = document.createElement('div'); card1.className='char-card'; card1.innerHTML=`<div class='char-emoji'>${c.emoji}</div><div><strong>${c.name}</strong><div class='muted'>HP ${c.hp} • Stamina ${c.stamMax}</div></div>`;
+        card1.onclick = ()=> selectChar('player', c.id);
+        playerPicker.appendChild(card1);
+
+        const card2 = card1.cloneNode(true); card2.onclick = ()=> selectChar('opponent', c.id);
+        opponentPicker.appendChild(card2);
+      });
+    }
+
+    function selectChar(who, id){
+      const char = CHARACTERS.find(c=>c.id===id);
+      if(!char) return;
+      if(who==='player'){
+        state.player = cloneCharacter(char);
+      } else {
+        state.opponent = cloneCharacter(char);
+      }
+      // reset selections related
+      state.playerMovesSelected = [];
+      state.opponentMovesSelected = [];
+      renderPickers(); renderMovesList(); renderFighters();
+    }
+
+    // show moves for selected player character
+    function renderMovesList(){
+      movesList.innerHTML=''; selectedCount.textContent = state.playerMovesSelected.length;
+      if(!state.player) { movesList.innerHTML='<div class="muted">Choose a player character first</div>'; return; }
+      state.player.moves.forEach(m => {
+        const mv = document.createElement('div'); mv.className='move';
+        const isSelected = state.playerMovesSelected.some(x=>x.id===m.id);
+        mv.innerHTML = `<div class='memoji'>${m.emoji}</div><div><strong>${m.name}</strong><small>${m.desc||m.type||''} ${m.heal? ' • Heal':''}${m.dot? ' • DOT':''}</small></div><div style='margin-left:8px' class='muted'>(${m.emoji} ${isSelected? '✔':' '})</div>`;
+        mv.onclick = ()=> toggleMove(m);
+        if(!isSelected && state.playerMovesSelected.length>=6) mv.classList.add('locked');
+        movesList.appendChild(mv);
+      });
+    }
+
+    function toggleMove(m){
+      const idx = state.playerMovesSelected.findIndex(x=>x.id===m.id);
+      if(idx>-1){ state.playerMovesSelected.splice(idx,1); }
+      else {
+        if(state.playerMovesSelected.length>=6) return; // limit
+        state.playerMovesSelected.push(JSON.parse(JSON.stringify(m)));
+      }
+      selectedCount.textContent = state.playerMovesSelected.length;
+      renderMovesList(); renderPlayerMovesArea();
+    }
+
+    // opponent auto-pick moves (randomly pick 6 best available)
+    function opponentAutoPick(){
+      if(!state.opponent) return;
+      const pool = [...state.opponent.moves];
+      // prefer higher dmg
+      pool.sort((a,b)=>(b.dmg||0)-(a.dmg||0));
+      state.opponentMovesSelected = pool.slice(0,6).map(m=>JSON.parse(JSON.stringify(m)));
+    }
+
+    // render fighters
+    function renderFighters(){
+      $('playerName').textContent = state.player ? `${state.player.emoji} ${state.player.name}` : 'Player -- (not selected)';
+      $('opponentName').textContent = state.opponent ? `${state.opponent.emoji} ${state.opponent.name}` : 'Opponent -- (not selected)';
+      updateBars(); updateCooldownDisplays(); renderPlayerMovesArea();
+    }
+
+    function updateBars(){
+      if(state.player){ $('playerHP').style.width = pct(state.player.hpCurrent,state.player.hp)+"%"; $('playerHPText').textContent = state.player.hpCurrent+" / "+state.player.hp; $('playerStam').style.width = pct(state.player.stamCurrent,state.player.stamMax)+"%"; $('playerStamText').textContent = Math.round(state.player.stamCurrent)+" / "+state.player.stamMax; }
+      if(state.opponent){ $('opponentHP').style.width = pct(state.opponent.hpCurrent,state.opponent.hp)+"%"; $('opponentHPText').textContent = state.opponent.hpCurrent+" / "+state.opponent.hp; $('opponentStam').style.width = pct(state.opponent.stamCurrent,state.opponent.stamMax)+"%"; $('opponentStamText').textContent = Math.round(state.opponent.stamCurrent)+" / "+state.opponent.stamMax; }
+    }
+
+    function updateCooldownDisplays(){
+      if(state.player){ const txt = Object.entries(state.player.cooldowns).map(([id,cd])=>{
+        const mv = state.player.moves.find(m=>m.id===id); if(!mv) return null; return `${mv.emoji} (${cd}/${mv.cd})`; }).filter(Boolean).join(' ');
+        $('playerCooldowns').textContent = 'Cooldowns: ' + (txt||'-'); }
+      if(state.opponent){ const txt = Object.entries(state.opponent.cooldowns).map(([id,cd])=>{
+        const mv = state.opponent.moves.find(m=>m.id===id); if(!mv) return null; return `${mv.emoji} (${cd}/${mv.cd})`; }).filter(Boolean).join(' ');
+        $('opponentCooldowns').textContent = 'Cooldowns: ' + (txt||'-'); }
+    }
+
+    // player moves area (active battle controls)
+    function renderPlayerMovesArea(){
+      const area = $('playerMovesArea'); area.innerHTML='';
+      if(!state.player || state.playerMovesSelected.length===0){ area.innerHTML='<div class="muted">Choose character & moves first</div>'; return; }
+      state.playerMovesSelected.forEach(m=>{
+        const btn = document.createElement('div'); btn.className='move';
+        const cd = state.player.cooldowns[m.id] || 0;
+        const locked = (cd>0) || (state.player.stamCurrent < (m.stam||0));
+        if(locked) btn.classList.add('locked');
+        btn.innerHTML = `<div class='memoji'>${m.emoji}</div><div><strong>${m.name}</strong><small>${m.dmg?m.dmg+' dmg':''}${m.heal? ' • heal':''} (${m.emoji} ${cd}/${m.cd})</small></div>`;
+        btn.onclick = ()=>{ if(locked) return; playerUseMove(m); };
+        area.appendChild(btn);
+      });
+    }
+
+    // resolve a move from attacker to defender
+    function resolveMove(attacker, defender, move){
+      // basic checks
+      if(move.stam && attacker.stamCurrent < move.stam) { log(`${attacker.name} attempted ${move.name} but lacked stamina.`); return {skipped:true}; }
+      // consume stamina
+      if(move.stam) attacker.stamCurrent = Math.max(0, attacker.stamCurrent - move.stam);
+
+      // set cooldown
+      attacker.cooldowns[move.id] = move.cd || 1;
+
+      // hit chance (dodge + weather + random)
+      let baseDodge = 25; // base enemy dodge chance
+      if(defender.buffs && defender.buffs.dodge) baseDodge += 20;
+      // special buff reduce/dodge
+      const missRoll = Math.random()*100;
+      const hitChance = 100 - baseDodge;
+      const weatherHitMod = state.weather==='fog' ? 0.85 : 1;
+
+      // critical
+      const crit = Math.random()*100 < 10;
+
+      // calculate damage
+      let dmg = move.dmg || 0;
+      dmg = Math.round(dmg * (crit?1.7:1) * weatherModifier(move) );
+
+      // apply heal
+      if(move.heal){ attacker.hpCurrent = Math.min(attacker.hp, attacker.hpCurrent + (typeof move.heal==='number'?move.heal:0)); }
+      if(move.healPct){ const healAmount = Math.round((move.healPct || 0)*dmg); attacker.hpCurrent = Math.min(attacker.hp, attacker.hpCurrent + healAmount); }
+
+      if(missRoll > hitChance*weatherHitMod){ log(`${attacker.emoji} ${attacker.name} used ${move.emoji} ${move.name} -- but it MISSED!`); return {missed:true}; }
+
+      // apply damage
+      if(dmg>0){ defender.hpCurrent = Math.max(0, defender.hpCurrent - dmg); }
+
+      // DOT
+      if(move.dot){ defender.buffs.dot = (defender.buffs.dot || 0) + move.dot; }
+
+      // heal from drain
+      if(move.healPct){ const healAmount = Math.round(dmg * move.healPct); attacker.hpCurrent = Math.min(attacker.hp, attacker.hpCurrent + healAmount); }
+
+      // buff/debuffs
+      if(move.buff==='dodge'){ attacker.buffs.dodge = (attacker.buffs.dodge||0) + 1; }
+      if(move.debuff==='stun'){ defender.buffs.stun = 1; }
+      if(move.buff==='shield'){ attacker.buffs.shield = (attacker.buffs.shield || 0) + 1; }
+      if(move.buff==='crit_up'){ attacker.buffs.crit_up = (attacker.buffs.crit_up || 0) + 1; }
+
+      // logging
+      let s = `${attacker.emoji} ${attacker.name} used ${move.emoji} ${move.name}`;
+      if(crit) s += ' -- CRITICAL!';
+      if(dmg>0) s += ` and dealt ${dmg} damage.`;
+      if(move.heal) s += ` ${attacker.emoji} healed ${move.heal}.`;
+      log(s);
+      return {dmg};
+    }
+
+    // apply end-of-round effects
+    function endOfRound(){
+      state.round++;
+      $('roundCounter').textContent = state.round;
+
+      // reduce cooldowns
+      [state.player, state.opponent].forEach(ch=>{
+        if(!ch) return;
+        for(const k in ch.cooldowns){ if(ch.cooldowns[k]>0) ch.cooldowns[k] = Math.max(0,ch.cooldowns[k]-1); }
+        // apply DOT
+        if(ch.buffs && ch.buffs.dot){ const dot = ch.buffs.dot; ch.hpCurrent = Math.max(0,ch.hpCurrent - dot); log(`${ch.emoji} ${ch.name} suffers ${dot} DOT.`); ch.buffs.dot = Math.max(0,ch.buffs.dot-1); }
+        // stamina regen mildly
+        ch.stamCurrent = Math.min(ch.stamMax, ch.stamCurrent + 8);
+      });
+
+      // clear one-turn buffs that expire
+      [state.player, state.opponent].forEach(ch=>{ if(!ch) return; if(ch.buffs){ // reduce temporary buffs
+          if(ch.buffs.stun) ch.buffs.stun = Math.max(0,ch.buffs.stun-1);
+        }
+      });
+
+      updateBars(); updateCooldownDisplays();
+    }
+
+    // resolve player's chosen move (called when clicking a move)
+    function playerUseMove(move){
+      if(!state.player || !state.opponent) return;
+      if(state.player.cooldowns[move.id] > 0) { log('Move is on cooldown'); return; }
+      if(state.player.stamCurrent < (move.stam||0)) { log('Not enough stamina'); return; }
+
+      // apply player's move
+      const res = resolveMove(state.player, state.opponent, move);
+      updateBars(); updateCooldownDisplays();
+      // check opponent death
+      if(state.opponent.hpCurrent <= 0){ log(`${state.opponent.emoji} ${state.opponent.name} has been defeated! You WIN 🎉`); return; }
+
+      // AI turn: choose move
+      window.setTimeout(()=> aiTakeTurn(), 700);
+    }
+
+    function aiTakeTurn(){
+      // choose a move that is not on cd and affordable
+      if(!state.opponent) return; if(state.opponent.buffs && state.opponent.buffs.stun){ log(`${state.opponent.emoji} ${state.opponent.name} is stunned and skips turn.`); endOfRound(); return; }
+      const avail = state.opponentMovesSelected.filter(m=> (state.opponent.cooldowns[m.id]||0)===0 && (state.opponent.stamCurrent >= (m.stam||0)) );
+      let choice = null;
+      if(avail.length===0){ // fallback: skip or rest
+        log(`${state.opponent.emoji} ${state.opponent.name} has no available moves and skips turn.`);
+        endOfRound(); return;
+      }
+      // prefer high damage with some randomness
+      avail.sort((a,b)=>(b.dmg||0)-(a.dmg||0));
+      choice = Math.random()<0.7 ? avail[0] : randChoice(avail);
+
+      const res = resolveMove(state.opponent, state.player, choice);
+      updateBars(); updateCooldownDisplays();
+      if(state.player.hpCurrent <= 0){ log(`${state.player.emoji} ${state.player.name} has been defeated. You Lose.`); return; }
+      endOfRound();
+    }
+
+    // -------------------------------
+    // Controls and setup buttons
+    // -------------------------------
+    $('randomChars').onclick = ()=>{
+      const p = randChoice(CHARACTERS); const o = randChoice(CHARACTERS);
+      selectChar('player', p.id); selectChar('opponent', o.id);
+    }
+    $('randomMoves').onclick = ()=>{
+      if(!state.player) return; const pool=[...state.player.moves]; pool.sort(()=>Math.random()-0.5);
+      state.playerMovesSelected = pool.slice(0,6).map(m=>JSON.parse(JSON.stringify(m)));
+      selectedCount.textContent = state.playerMovesSelected.length; renderMovesList(); renderPlayerMovesArea();
+    }
+
+    $('startBtn').onclick = ()=>{
+      if(!state.player || !state.opponent){ alert('Select both player and opponent characters first.'); return; }
+      if(state.playerMovesSelected.length===0){ alert('Select up to 6 moves for your player (min 1).'); return; }
+      // finalize opponent picks
+      opponentAutoPick();
+      // if weather random, choose now
+      const wSel = $('weatherSelect').value; state.weather = wSel==='random'? randChoice(['sunny','rain','storm','fog']): wSel;
+      $('startBtn').disabled = true; $('weatherSelect').disabled = true; $('randomChars').disabled = true; $('randomMoves').disabled = true;
+      // convert player/opponent to runtime clones
+      state.player = state.player; state.opponent = state.opponent;
+      // ensure cooldown structure for selected moves only
+      // ensure cooldown fields exist
+      state.player.moves.forEach(m=>{ if(state.player.cooldowns[m.id]===undefined) state.player.cooldowns[m.id]=0; });
+      state.opponent.moves.forEach(m=>{ if(state.opponent.cooldowns[m.id]===undefined) state.opponent.cooldowns[m.id]=0; });
+
+      state.round = 0; state.log = [];
+      log(`Battle started! Weather: ${state.weather.toUpperCase()}`);
+      renderFighters(); renderPlayerMovesArea(); renderLog();
+    }
+
+    $('endTurnBtn').onclick = ()=>{
+      // allow player to skip
+      log('Player skipped turn.'); aiTakeTurn();
+    }
+
+    $('resetBtn').onclick = ()=>{
+      location.reload();
+    }
+
+    // initial render
+    renderPickers(); renderMovesList(); renderFighters();
+
+    // small accessibility: keyboard shortkeys 1-6 to use moves
+    window.addEventListener('keydown', e=>{
+      if("123456".includes(e.key) && state.playerMovesSelected.length>=parseInt(e.key)){
+        const idx = parseInt(e.key)-1; const mv = state.playerMovesSelected[idx]; if(mv) playerUseMove(mv);
+      }
+    });
+  </script>
+</body>
+</html>
