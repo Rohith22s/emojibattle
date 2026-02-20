@@ -168,8 +168,52 @@ let state = {
   weather: 'sunny',
   round: 0,
   log: [],
-  rngSeed: Math.random()
+  rngSeed: 12345 // default, will be synced
 };
+
+// Simple Seeded RNG to keep online matches in sync
+function seededRandom() {
+  state.rngSeed = (state.rngSeed * 9301 + 49297) % 233280;
+  return state.rngSeed / 233280;
+}
+
+// v4: Capture Sync Snapshot
+function captureStateSnapshot() {
+  const simplify = (char) => ({
+    hpCurrent: char.hpCurrent,
+    stamCurrent: char.stamCurrent,
+    buffs: JSON.parse(JSON.stringify(char.buffs || {})),
+    cooldowns: JSON.parse(JSON.stringify(char.cooldowns || {}))
+  });
+
+  return {
+    player: simplify(state.player),
+    opponent: simplify(state.opponent),
+    round: state.round,
+    rngSeed: state.rngSeed
+  };
+}
+
+// v4: Restore Sync Snapshot
+function restoreStateSnapshot(snap, myRole) {
+  const apply = (char, data) => {
+    char.hpCurrent = data.hpCurrent;
+    char.stamCurrent = data.stamCurrent;
+    char.buffs = data.buffs;
+    char.cooldowns = data.cooldowns;
+  };
+
+  // 'player' in snapshot is the SENDER. 'opponent' is the RECEIVER (us).
+  // Wait, no. Snapshot was taken by sender.
+  // Sender.player -> My.Opponent
+  // Sender.opponent -> My.Player
+  apply(state.opponent, snap.player);
+  apply(state.player, snap.opponent);
+
+  state.rngSeed = snap.rngSeed;
+  // Round sync is handled separately/redundantly but let's trust the snapshot if higher
+  if (snap.round > state.round) state.round = snap.round;
+}
 
 // -------------------------------
 // Utility helpers
@@ -224,7 +268,7 @@ function initSelectionPage() {
   const selectedCount = $('selectedCount');
 
   // Check Online Mode
-  const onlineDataStr = localStorage.getItem('emojiOnline');
+  const onlineDataStr = sessionStorage.getItem('emojiOnline');
   const onlineData = onlineDataStr ? JSON.parse(onlineDataStr) : null;
   const isOnline = !!onlineData;
   const myRole = onlineData ? onlineData.role : null; // 'p1' or 'p2'
@@ -349,8 +393,9 @@ function initSelectionPage() {
         // Host sets weather (or whoever is first if missing)
         roomRef.child('weather').get().then(snap => {
           if (!snap.exists() && myRole === 'p1') {
+            const seed = Math.floor(Math.random() * 100000);
             const w = randChoice(['sunny', 'rain', 'storm', 'fog']);
-            roomRef.update({ weather: w });
+            roomRef.update({ weather: w, rngSeed: seed });
           }
         });
 
@@ -386,6 +431,7 @@ function initSelectionPage() {
           state.opponent = oppData.char;
           state.opponentMovesSelected = oppData.moves;
           state.weather = weather;
+          state.rngSeed = val.rngSeed || 12345;
 
           // Save and Go
           const saveData = {
@@ -396,9 +442,10 @@ function initSelectionPage() {
             weather: state.weather,
             online: true,
             role: myRole,
-            room: onlineData.room
+            room: onlineData.room,
+            rngSeed: state.rngSeed
           };
-          localStorage.setItem('emojiBattleState', JSON.stringify(saveData));
+          sessionStorage.setItem('emojiBattleState', JSON.stringify(saveData));
           window.location.href = 'play.html';
         } else {
           btn.textContent = `Waiting... (P1:${p1Ready ? 'OK' : '...'} P2:${p2Ready ? 'OK' : '...'})`;
@@ -422,7 +469,7 @@ function initSelectionPage() {
       opponentMovesSelected: state.opponentMovesSelected,
       weather: state.weather
     };
-    localStorage.setItem('emojiBattleState', JSON.stringify(saveData));
+    sessionStorage.setItem('emojiBattleState', JSON.stringify(saveData));
 
     // Redirect
     window.location.href = 'play.html';
@@ -442,7 +489,7 @@ function initBattlePage() {
   if (!$('playerBox')) return;
 
   // Load state
-  const saved = localStorage.getItem('emojiBattleState');
+  const saved = sessionStorage.getItem('emojiBattleState');
   if (!saved) {
     alert("No game state found. Redirecting to selection.");
     window.location.href = "select.html";
@@ -453,7 +500,7 @@ function initBattlePage() {
     data = JSON.parse(saved);
   } catch (e) {
     console.error(e);
-    localStorage.removeItem('emojiBattleState');
+    sessionStorage.removeItem('emojiBattleState');
     alert("Game data corrupted. Resetting.");
     window.location.href = "select.html";
     return;
@@ -462,7 +509,7 @@ function initBattlePage() {
   // Validate Data
   if (!data.player || !data.opponent || !data.player.moves || !data.player.name) {
     // Invalid state from old version
-    localStorage.removeItem('emojiBattleState');
+    sessionStorage.removeItem('emojiBattleState');
     alert("Game assets updated! Please select characters again.");
     window.location.href = "select.html";
     return;
@@ -473,6 +520,7 @@ function initBattlePage() {
   state.playerMovesSelected = data.playerMovesSelected;
   state.opponentMovesSelected = data.opponentMovesSelected;
   state.weather = data.weather;
+  state.rngSeed = data.rngSeed || 12345;
   state.log = [];
   state.round = 0;
 
@@ -606,54 +654,135 @@ function initBattlePage() {
     }, 1150); // Slightly less than 1.2s to trigger hit right before end
   }
 
+  // Pre-calculate results to ensure sync
+  function calculateMoveResults(attacker, defender, move) {
+    const res = {
+      confuseTriggered: false,
+      fearTriggered: false,
+      missed: false,
+      crit: false,
+      reflected: false,
+      dmg: 0,
+      hpHealed: 0
+    };
+
+    // 0. confusion (33%)
+    if (attacker.buffs.confuse) {
+      if (seededRandom() < 0.33) {
+        res.confuseTriggered = true;
+        return res;
+      }
+    }
+
+    // 1. fear (50%)
+    if (attacker.buffs.fear) {
+      if (seededRandom() < 0.5) {
+        res.fearTriggered = true;
+        return res;
+      }
+    }
+
+    // 3. hit / miss
+    let baseDodge = 25;
+    if (defender.buffs && defender.buffs.dodge) baseDodge += 25;
+    if (defender.buffs && defender.buffs.evade) baseDodge += 50;
+    const missRoll = seededRandom() * 100;
+    const hitChance = 100 - baseDodge;
+    const weatherHitMod = state.weather === 'fog' ? 0.85 : 1;
+
+    // 4. crit
+    let critChance = 10;
+    if (attacker.buffs && attacker.buffs.crit_up) critChance += 25;
+    const critVal = seededRandom() * 100;
+    res.crit = critVal < critChance;
+
+    let dmg = move.dmg || 0;
+    dmg = Math.round(dmg * (res.crit ? 1.7 : 1) * weatherModifier(move));
+    res.dmg = dmg;
+
+    if (defender.buffs && defender.buffs.reflect && dmg > 0) {
+      res.reflected = true;
+    } else if (dmg > 0 && missRoll > hitChance * weatherHitMod) {
+      res.missed = true;
+    }
+
+    // 5. heal
+    let hpHealed = 0;
+    if (move.heal) { hpHealed += (typeof move.heal === 'number' ? move.heal : 0); }
+    if (move.healPct) { hpHealed += Math.round((move.healPct || 0) * dmg); }
+    res.hpHealed = hpHealed;
+
+    return res;
+  }
+
   // resolve a move from attacker to defender
-  function resolveMove(attacker, defender, move) {
+  function resolveMove(attacker, defender, move, precalc = null) {
     const isPlayer = attacker === state.player;
     // TARGET ARENA CHARACTERS for animation/text
     const attEl = isPlayer ? $('arenaPlayer') : $('arenaOpponent');
     const defEl = isPlayer ? $('arenaOpponent') : $('arenaPlayer');
 
     // 0. check skip turn (Time Freeze / Stun)
+    const endTurn = () => {
+      if (state.player.hpCurrent <= 0 || state.opponent.hpCurrent <= 0) {
+        checkEndGame();
+      } else if (isPlayer) {
+        const saved = sessionStorage.getItem('emojiBattleState');
+        const data = saved ? JSON.parse(saved) : {};
+        if (!data.online) setTimeout(() => aiTakeTurn(), 1000);
+        else endOfRound();
+      } else {
+        // Opponent's turn (AI or Online)
+        const saved = sessionStorage.getItem('emojiBattleState');
+        const data = saved ? JSON.parse(saved) : {};
+        // Both Offline AI and Online Opponent should wrap up with endOfRound
+        endOfRound();
+      }
+    };
+
     if (attacker.buffs.skip_turn) {
       log(`${attacker.emoji} ${attacker.name} is frozen in time! Turn skipped.`);
       attacker.buffs.skip_turn = 0; // consume
       showFloatingText(attEl, "FROZEN", "float-miss");
+      endTurn();
       return { skipped: true };
     }
     if (attacker.buffs.stun) {
       log(`${attacker.emoji} ${attacker.name} is stunned! Turn skipped.`);
-      attacker.buffs.stun = 0; // consume (or handle duration in endOfRound)
+      attacker.buffs.stun = 0; // consume
       showFloatingText(attEl, "STUNNED", "float-miss");
+      endTurn();
       return { skipped: true };
     }
 
-    // 1. check confuse (33% chance to hit self or fail)
-    if (attacker.buffs.confuse) {
-      if (Math.random() < 0.33) {
-        log(`${attacker.emoji} ${attacker.name} is confused and hurt itself!`);
-        attacker.hpCurrent = Math.max(0, attacker.hpCurrent - 10);
-        attacker.buffs.confuse = Math.max(0, attacker.buffs.confuse - 1);
-        showFloatingText(attEl, "-10", "float-dmg");
-        animate(attEl, "anim-hit");
-        return { self_harm: true };
-      }
+    // 1. check confuse
+    const res = precalc || calculateMoveResults(attacker, defender, move);
+
+    if (res.confuseTriggered) {
+      log(`${attacker.emoji} ${attacker.name} is confused and hurt itself!`);
+      attacker.hpCurrent = Math.max(0, attacker.hpCurrent - 10);
+      attacker.buffs.confuse = Math.max(0, attacker.buffs.confuse - 1);
+      showFloatingText(attEl, "-10", "float-dmg");
+      animate(attEl, "anim-hit");
+      updateBars();
+      endTurn();
+      return { self_harm: true };
     }
 
-    // 2. check fear (50% chance to fail)
-    if (attacker.buffs.fear) {
-      if (Math.random() < 0.5) {
-        log(`${attacker.emoji} ${attacker.name} is too afraid to move!`);
-        attacker.buffs.fear = Math.max(0, attacker.buffs.fear - 1);
-        showFloatingText(attEl, "SCARED", "float-miss");
-        return { skipped: true };
-      }
+    // 2. check fear
+    if (res.fearTriggered) {
+      log(`${attacker.emoji} ${attacker.name} is too afraid to move!`);
+      attacker.buffs.fear = Math.max(0, attacker.buffs.fear - 1);
+      showFloatingText(attEl, "SCARED", "float-miss");
+      endTurn();
+      return { skipped: true };
     }
-
-    // basic checks
-    if (move.stam && attacker.stamCurrent < move.stam) { log(`${attacker.name} attempted ${move.name} but lacked stamina.`); return { skipped: true }; }
 
     // consume stamina
-    if (move.stam) attacker.stamCurrent = Math.max(0, attacker.stamCurrent - move.stam);
+    if (move.stam) {
+      attacker.stamCurrent = Math.max(0, attacker.stamCurrent - move.stam);
+      updateBars();
+    }
 
     // set cooldown
     attacker.cooldowns[move.id] = move.cd || 1;
@@ -670,33 +799,19 @@ function initBattlePage() {
         // return { success: true }; // Cannot return from async
       }
 
-      // hit chance (dodge + weather + random)
-      let baseDodge = 25; // base enemy dodge chance
-      if (defender.buffs && defender.buffs.dodge) baseDodge += 25; // buffed dodge
-      if (defender.buffs && defender.buffs.evade) baseDodge += 50; // high evade
-
-      const missRoll = Math.random() * 100;
-      const hitChance = 100 - baseDodge;
-      const weatherHitMod = state.weather === 'fog' ? 0.85 : 1;
-
-      // critical (base 10%, +25% if crit_up)
-      let critChance = 10;
-      if (attacker.buffs && attacker.buffs.crit_up) critChance += 25;
-      const crit = Math.random() * 100 < critChance;
-
-      // calculate damage
-      let dmg = move.dmg || 0;
-      dmg = Math.round(dmg * (crit ? 1.7 : 1) * weatherModifier(move));
+      // use results
+      const crit = res.crit;
+      let dmg = res.dmg;
 
       // check reflect
-      if (defender.buffs && defender.buffs.reflect && dmg > 0) {
+      if (res.reflected) {
         log(`${defender.emoji} ${defender.name} REFLECTS the attack!`);
         attacker.hpCurrent = Math.max(0, attacker.hpCurrent - dmg); // Reflect full damage
         defender.buffs.reflect = Math.max(0, defender.buffs.reflect - 1); // consume reflect
         showFloatingText(attEl, `-${dmg} (Reflect)`, "float-dmg");
         animate(attEl, "anim-hit");
         // return { reflected: true };
-      } else if (dmg > 0 && missRoll > hitChance * weatherHitMod) {
+      } else if (res.missed) {
         log(`${attacker.emoji} ${attacker.name} used ${move.emoji} ${move.name} -- but it MISSED!`);
         showFloatingText(defEl, "MISS", "float-miss");
         // return { missed: true };
@@ -718,14 +833,10 @@ function initBattlePage() {
 
         // DOT
         if (move.dot) { defender.buffs.dot = (defender.buffs.dot || 0) + move.dot; showFloatingText(defEl, "POISONED", "float-miss"); }
-
-        // logging (move usage) handled below
       }
 
-      // apply heal (happens regardless of hit usually)
-      let hpHealed = 0;
-      if (move.heal) { hpHealed += (typeof move.heal === 'number' ? move.heal : 0); }
-      if (move.healPct) { hpHealed += Math.round((move.healPct || 0) * dmg); } // lifesteal only if dmg>0
+      // apply heal
+      let hpHealed = res.hpHealed;
       if (hpHealed > 0) {
         attacker.hpCurrent = Math.min(attacker.hp, attacker.hpCurrent + hpHealed);
         showFloatingText(attEl, `+${hpHealed}`, "float-heal");
@@ -758,8 +869,22 @@ function initBattlePage() {
       if (state.player.hpCurrent <= 0 || state.opponent.hpCurrent <= 0) {
         checkEndGame();
       } else if (isPlayer) {
-        // Only if it was player turn, queue AI
-        setTimeout(() => aiTakeTurn(), 1000);
+        // Only if it was player turn, queue AI (Local mode only)
+        const saved = sessionStorage.getItem('emojiBattleState');
+        const data = saved ? JSON.parse(saved) : {};
+        if (!data.online) {
+          setTimeout(() => aiTakeTurn(), 1000);
+        } else {
+          // In online mode, we trigger endOfRound locally after move impact
+          endOfRound();
+        }
+      } else if (!isPlayer) {
+        // If it was opponent (AI or Online), also tick round effects if online
+        const saved = sessionStorage.getItem('emojiBattleState');
+        const data = saved ? JSON.parse(saved) : {};
+        if (data.online) {
+          endOfRound();
+        }
       }
     };
 
@@ -823,35 +948,31 @@ function initBattlePage() {
     if (state.player.stamCurrent < (move.stam || 0)) { log('Not enough stamina'); return; }
 
     // ONLINE LOGIC
-    const saved = localStorage.getItem('emojiBattleState');
+    const saved = sessionStorage.getItem('emojiBattleState');
     const saveData = saved ? JSON.parse(saved) : {};
     if (saveData.online) {
-      // Online: Push move to DB
-      // Format: { from: 'p1', moveId: 'fireball' }
       const roomRef = db.ref('rooms/' + saveData.room);
       const myRole = saveData.role;
 
-      // Check local turn? 
-      // For simplicity, we allow spamming moves but cooldowns apply locally.
-      // Better: Disable UI if we want turn-based. But this is cooldown-based.
+      // Pre-calculate results for sync
+      const res = calculateMoveResults(state.player, state.opponent, move);
 
-      // Push move
+      // v4: Capture State Snapshot (Pre-Move State) allows receiver to self-repair
+      // actually, let's capture CURRENT state (before move impact).
+      const snap = captureStateSnapshot();
+
+      // Push move AND precalculated result AND snapshot
       roomRef.child('moves').push({
         from: myRole,
         moveId: move.id,
+        res: res,
+        snapshot: snap,
+        round: state.round,
         timestamp: Date.now()
       });
 
-      // Apply locally immediately for responsiveness?
-      // Or wait for echo? Let's apply locally to me, but we need to ensure unique IDs if using push keys.
-      // Actually, let's Apply locally for ME (attacker), and opponent applies when they hear it.
-      // Wait. resolveMove(attacker... ) needs to happen on BOTH screens.
-      // If I run it here, I see my move. Opponent needs to run it too.
-
-      // We will run it here for instant feedback.
-      const res = resolveMove(state.player, state.opponent, move);
-      updateBars(); updateCooldownDisplays();
-      checkEndGame();
+      // Apply locally
+      resolveMove(state.player, state.opponent, move, res);
       return;
     }
 
@@ -864,8 +985,8 @@ function initBattlePage() {
     if (state.player.hpCurrent <= 0) { log(`${state.player.emoji} You fainted from recoil/reflect!`); return; }
     if (state.opponent.hpCurrent <= 0) { log(`${state.opponent.emoji} ${state.opponent.name} has been defeated! You WIN 🎉`); return; }
 
-    // AI turn: choose move
-    window.setTimeout(() => aiTakeTurn(), 700);
+    // AI turn: resolveMove handles triggering aiTakeTurn for offline mode now
+
   }
 
   function checkEndGame() {
@@ -898,7 +1019,7 @@ function initBattlePage() {
         modal.style.display = 'flex';
 
         const updateBtnText = () => {
-          if (localStorage.getItem('emojiOnline')) {
+          if (sessionStorage.getItem('emojiOnline')) {
             $('btnPlayAgain').textContent = "Rematch (Coming Soon)";
             $('btnPlayAgain').disabled = true;
           }
@@ -914,55 +1035,67 @@ function initBattlePage() {
           window.location.href = 'select.html';
         };
         $('btnEndGame').onclick = () => {
+          sessionStorage.removeItem('emojiBattleState');
+          sessionStorage.removeItem('emojiOnline');
           window.location.href = 'index.html';
         };
       }
     }
   }
 
-  // Override initBattlePage to listen for moves
-  const _originalInitBattle = initBattlePage;
-  initBattlePage = function () {
-    _originalInitBattle(); // Standard init
+  // Handle Online Listeners inside Page Init
+  if (data.online && data.room) {
+    log("Connected to Online Room: " + data.room);
+    const myRole = data.role;
+    const oppRole = myRole === 'p1' ? 'p2' : 'p1';
+    const roomRef = db.ref('rooms/' + data.room);
 
-    // Check Online
-    const saved = localStorage.getItem('emojiBattleState');
-    const data = saved ? JSON.parse(saved) : {};
+    // Initial load: sync round if needed
+    // Move Listener
+    const processedMoves = new Set();
+    roomRef.child('moves').off();
+    roomRef.child('moves').on('child_added', snap => {
+      if (processedMoves.has(snap.key)) return; // Replay Protection
+      processedMoves.add(snap.key);
 
-    if (data.online && data.room) {
-      log("Connected to Online Room: " + data.room);
-      const myRole = data.role; // 'p1'
-      const oppRole = myRole === 'p1' ? 'p2' : 'p1';
+      const val = snap.val();
+      if (!val) return;
 
-      const roomRef = db.ref('rooms/' + data.room);
-
-      // Listen for moves
-      roomRef.child('moves').on('child_added', snap => {
-        const val = snap.val();
-        if (!val) return;
-
-        // If it's MY move, I already ran it locally? 
-        // Yes, locally ran in playerUseMove.
-        // But what if I refresh?
-        // For now, assume session persistence.
-
-        if (val.from === oppRole) {
-          // Opponent used a move!
-          const mv = state.opponentMovesSelected.find(m => m.id === val.moveId);
-          if (mv) {
-            log(`Opponent used ${mv.name}`);
-            resolveMove(state.opponent, state.player, mv);
-            updateBars(); updateCooldownDisplays();
-            checkEndGame();
-          } else {
-            console.error("Unknown move from opponent", val.moveId);
+      if (val.from === oppRole) {
+        // v4: Force Sync State from Snapshot FIRST
+        if (val.snapshot) {
+          log(`[Sync] Resyncing state from P${val.from === 'p1' ? '1' : '2'}`);
+          restoreStateSnapshot(val.snapshot, myRole);
+          updateBars(); // Visual snap to correct start state
+        } else {
+          // Fallback for old packets (v3) - Sync Round Only
+          if (typeof val.round === 'number' && val.round > state.round) {
+            log(`[Sync] Advancing from Round ${state.round} to ${val.round}`);
+            state.round = val.round;
+            $('roundCounter').textContent = state.round;
           }
         }
-      });
 
-      // Listen for disconnect?
-    }
-  };
+        // Opponent used a move!
+        const mv = state.opponentMovesSelected.find(m => m.id === val.moveId);
+        if (mv) {
+          log(`Opponent used ${mv.name}`);
+          // Apply with pre-calculated result for 100% sync
+          resolveMove(state.opponent, state.player, mv, val.res);
+        }
+      }
+    });
+
+    // Connection Status Listener
+    const connectedRef = db.ref(".info/connected");
+    connectedRef.on("value", (snap) => {
+      if (snap.val() === true) {
+        log("✅ Online Battle: Connected");
+      } else {
+        log("❌ Online Battle: Connection Lost");
+      }
+    });
+  }
 
   function aiTakeTurn() {
     if (!state.opponent) return;
@@ -1019,23 +1152,15 @@ function initBattlePage() {
 
     const choice = avail[0]; // Best efficient move
     resolveMove(opponent, player, choice);
-    checkEndGame();
-    endOfRound();
-  }
-
-  function checkEndGame() {
-    updateBars(); updateCooldownDisplays();
-    if (state.player.hpCurrent <= 0) { log(`${state.player.emoji} ${state.player.name} has been defeated. You Lose.`); return; }
-    if (state.opponent.hpCurrent <= 0) { log(`${state.opponent.emoji} ${state.opponent.name} has been defeated! You WIN 🎉`); return; }
+    // endOfRound is handled inside resolveMove impactCallback for AI/Offline too?
+    // Wait, in aiTakeTurn we normally call endOfRound directly.
+    // Let's keep it consistent. resolveMove handles the trigger.
   }
 
   // Start
   renderFighters(); renderLog();
 }
 
-// -------------------------------
-// LOBBY PAGE LOGIC
-// -------------------------------
 // -------------------------------
 // LOBBY PAGE LOGIC
 // -------------------------------
@@ -1084,7 +1209,7 @@ function initLobbyPage() {
         if (snapshot.exists()) {
           // P2 joined!
           // Redirect to selection with room data
-          localStorage.setItem('emojiOnline', JSON.stringify({
+          sessionStorage.setItem('emojiOnline', JSON.stringify({
             room: code,
             role: 'p1', // Host is P1
             uid: uid
@@ -1119,7 +1244,7 @@ function initLobbyPage() {
             p2: { uid: uid, status: 'joined' }
           }).then(() => {
             console.log("Joined successfully!");
-            localStorage.setItem('emojiOnline', JSON.stringify({
+            sessionStorage.setItem('emojiOnline', JSON.stringify({
               room: code,
               role: 'p2', // Joiner is P2
               uid: uid
@@ -1172,7 +1297,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initLobbyPage();
   } else if (document.getElementById('playerPicker')) {
     // Check if online mode
-    const onlineData = localStorage.getItem('emojiOnline');
+    const onlineData = sessionStorage.getItem('emojiOnline');
     // For now, standard selection. We will add Online Selection Logic in next step or inject it.
     initSelectionPage();
   } else if (document.getElementById('playerBox')) {
